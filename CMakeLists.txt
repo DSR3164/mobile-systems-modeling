@@ -49,9 +49,16 @@ add_executable(main
     ${SRC_DIR}/funcs.cpp
 )
 
+add_executable(gui
+    ${SRC_DIR}/main2.cpp
+    ${SRC_DIR}/funcs.cpp
+)
+
 target_include_directories(main PRIVATE ${INCLUDE_DIR})
 
-target_link_libraries(main
+target_include_directories(gui PRIVATE ${INCLUDE_DIR})
+
+target_link_libraries(gui
     PRIVATE
         imgui
         implot
