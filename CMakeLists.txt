@@ -7,10 +7,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(THIRD_PARTY_DIR ${PROJECT_SOURCE_DIR}/third_party)
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(INCLUDE_DIR ${PROJECT_SOURCE_DIR}/include)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(SDL2 CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
+
+# ---------- FFTW ----------
+find_library(FFTW3F_LIB fftw3f REQUIRED)
+find_path(FFTW3F_INCLUDE_DIR fftw3.h REQUIRED)
 
 add_library(imgui STATIC
     ${THIRD_PARTY_DIR}/imgui/imgui.cpp
@@ -24,15 +29,15 @@ add_library(imgui STATIC
 
 target_include_directories(imgui
     PUBLIC
-        ${THIRD_PARTY_DIR}/imgui
-        ${THIRD_PARTY_DIR}/imgui/backends
+    ${THIRD_PARTY_DIR}/imgui
+    ${THIRD_PARTY_DIR}/imgui/backends
 )
 
 target_link_libraries(imgui
     PUBLIC
-        SDL2::SDL2
-        OpenGL::GL
-        GLEW::GLEW
+    SDL2::SDL2
+    OpenGL::GL
+    GLEW::GLEW
 )
 
 add_library(implot STATIC
@@ -56,13 +61,24 @@ add_executable(gui
 
 target_include_directories(main PRIVATE ${INCLUDE_DIR})
 
-target_include_directories(gui PRIVATE ${INCLUDE_DIR})
+target_include_directories(gui PRIVATE ${INCLUDE_DIR} ${FFTW3F_INCLUDE_DIR})
 
 target_link_libraries(gui
     PRIVATE
-        imgui
-        implot
-        SDL2::SDL2
-        OpenGL::GL
-        GLEW::GLEW
+    ${FFTW3F_LIB}
+    imgui
+    implot
+    SDL2::SDL2
+    OpenGL::GL
+    GLEW::GLEW
+)
+
+target_link_libraries(main
+    PRIVATE
+    ${FFTW3F_LIB}
+    imgui
+    implot
+    SDL2::SDL2
+    OpenGL::GL
+    GLEW::GLEW
 )
