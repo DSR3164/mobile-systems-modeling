@@ -121,6 +121,9 @@ std::vector<uint8_t> hamming_decode(const std::vector<uint8_t> &data);
 std::vector<uint8_t> interleave(const std::vector<uint8_t> &input, size_t rows, size_t cols);
 std::vector<uint8_t> deinterleave(const std::vector<uint8_t> &input, size_t rows, size_t cols);
 
+std::vector<uint8_t> to_bits(const std::vector<uint8_t> &data);
+std::vector<uint8_t> from_bits(const std::vector<uint8_t> &bits);
+
 void generate_bits(std::vector<uint8_t> &bits, size_t L = 1000);
 void ofdm(const std::vector<std::complex<float>> &symbols, std::vector<std::complex<float>> &buffer, OFDMConfig &OFDMConfig);
 void qpsk_mapper_3gpp(const std::vector<uint8_t> &bits, std::vector<std::complex<float>> &symbols);
