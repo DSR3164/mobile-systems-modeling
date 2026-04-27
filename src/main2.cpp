@@ -36,6 +36,7 @@ void run_gui()
     bool update = true;
     bool always_random = false;
     float sample_rate = 1.92e6;
+    bool random_paths = false;
 
     OFDMConfig base;
     MultipathChannel channel;
@@ -92,9 +93,9 @@ void run_gui()
                     qpsk_mapper_3gpp(bits, symbols);
                     ofdm(symbols, buffer, base);
                 }
-
+                if (random_paths)
                 channel.set_paths(4, sample_rate);
-                channel.update_paths(dis(gen));
+
                 channel.pass_through(buffer, signal);
                 demodulate_ofdm(signal, demoded, base, start);
                 ofdm_equalize(demoded, equalized, base);
@@ -129,6 +130,7 @@ void run_gui()
                         update = true;
                 }
                 ImGui::Checkbox("Random Data", &always_random);
+                ImGui::Checkbox("Random Pahts", &random_paths);
                 if (ImGui::SliderInt("Pilot Spacing", &PS, 2, N / 2))
                 {
                     if (PS > 2)
