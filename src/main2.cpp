@@ -93,7 +93,7 @@ void run_gui()
                     ofdm(symbols, buffer, base);
                 }
                 if (random_paths)
-                channel.set_paths(4, sample_rate);
+                    channel.set_paths(4, sample_rate);
 
                 channel.pass_through(buffer, signal);
                 demodulate_ofdm(signal, demoded, base, start);
