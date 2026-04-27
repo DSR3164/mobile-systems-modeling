@@ -40,6 +40,8 @@ void run_gui()
 
     OFDMConfig base;
     MultipathChannel channel;
+    float noise_db = -174 + 10 * std::log10(sample_rate) + 6;
+    channel.set_noise(noise_db);
     channel.set_paths();
     int N = base.n_subcarriers;
     int PS = base.pilots_spacing;
@@ -84,9 +86,6 @@ void run_gui()
             update |= RT;
             if (update)
             {
-                static std::mt19937 gen(std::random_device{}());
-                static std::uniform_real_distribution<float> dis(0.5f, 1.5f);
-
                 if (always_random)
                 {
                     generate_bits(bits, L);
@@ -109,6 +108,8 @@ void run_gui()
             }
 
             { // Controls
+                static std::mt19937 gen(std::random_device{}());
+                static std::uniform_real_distribution<float> dis(0.5f, 1.5f);
                 ImGui::Begin("Controls");
                 ImGui::Text("FPS: %.2f", io.Framerate);
                 ImGui::SliderInt("Packet start", &start, 0, 180);
@@ -120,7 +121,15 @@ void run_gui()
                     qpsk_mapper_3gpp(bits, symbols);
                     ofdm(symbols, buffer, base);
                 }
-                ImGui::InputFloat("Sample rate", &sample_rate, 1e3f, 1e7f, "%.3e");
+                if (ImGui::InputFloat("Sample rate", &sample_rate, 1e3f, 1e7f, "%.3e"))
+                {
+                    channel.set_paths(4, sample_rate);
+                    channel.update_paths(dis(gen));
+                };
+                if (ImGui::InputFloat("Noise dB", &noise_db))
+                {
+                    channel.set_noise(noise_db);
+                };
                 if (ImGui::Checkbox("Real-Time", &RT))
                     update = RT;
                 if (!RT)
