@@ -269,8 +269,8 @@ void ofdm(const std::vector<std::complex<float>> &symbols, std::vector<std::comp
 
         for (int n = 0; n < N; ++n)
         {
-            ifft.out[n][0] /= static_cast<float>(N);
-            ifft.out[n][1] /= static_cast<float>(N);
+            ifft.out[n][0] /= static_cast<float>(N) / 10;
+            ifft.out[n][1] /= static_cast<float>(N) / 10;
         }
 
         // Cyclic Prefix
