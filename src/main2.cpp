@@ -174,6 +174,7 @@ void run_gui()
             {
                 float max = 1.3f;
                 ImPlot::SetupAxesLimits(-max, max, -max, max, ImPlotCond_Once);
+                ImPlot::SetNextMarkerStyle(ImPlotMarker_Square, 2.0f);
                 ImPlot::PlotScatter(
                     "Const",
                     reinterpret_cast<const float *>(symbols.data()),
@@ -190,6 +191,7 @@ void run_gui()
             {
                 float max = 1.3f;
                 ImPlot::SetupAxesLimits(-max, max, -max, max, ImPlotCond_Once);
+                ImPlot::SetNextMarkerStyle(ImPlotMarker_Square, 2.0f);
                 ImPlot::PlotScatter(
                     "Const",
                     reinterpret_cast<const float *>(equalized.data()),
