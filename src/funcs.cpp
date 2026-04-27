@@ -394,13 +394,17 @@ void MultipathChannel::pass_through(const std::vector<std::complex<float>> &sign
     size_t max_offset = beams[beams_count - 1].absolute_offset;
     signal_out.assign(signal_in.size() + max_offset, {0.0f, 0.0f});
 
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::normal_distribution<> dis(0.0f, sigma);
+
     for (size_t i = 0; i < beams_count; ++i)
     {
         size_t offset = beams[i].absolute_offset;
         float gain = beams[i].coefficient;
 
         for (size_t k = 0; k < signal_in.size(); ++k)
-            signal_out[k + offset] += signal_in[k] * gain;
+            signal_out[k + offset] += signal_in[k] * gain + std::complex<float>(dis(gen), dis(gen));
     }
     signal_out.resize(signal_in.size(), {0.0f, 0.0f});
 }
