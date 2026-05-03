@@ -12,13 +12,13 @@ static bool is_pow2(int x)
     return x && !(x & (x - 1));
 }
 
-void encoder(char *letters, std::vector<std::uint8_t> &bits)
+void encoder(const char *letters, std::vector<std::uint8_t> &bits)
 {
     for (int i = 0; i < bits.size(); ++i)
         bits[i] = (std::uint8_t)letters[i];
 }
 
-void decoder(std::vector<std::uint8_t> bits, char *letters)
+void decoder(const std::vector<std::uint8_t> &bits, char *letters)
 {
     for (int i = 0; i < bits.size(); ++i)
         letters[i] = (char)bits[i];
@@ -75,10 +75,7 @@ std::vector<uint8_t> hamming_decode(const std::vector<uint8_t> &bits)
     }
 
     if (syndrome && syndrome <= n)
-    {
         in[syndrome] ^= 1;
-        std::cout << "\n\e[31mОшибка\e[39m на месте " << syndrome << "\n";
-    }
 
     std::vector<uint8_t> out;
     for (std::size_t i = 1; i <= n; ++i)
@@ -152,6 +149,82 @@ std::vector<uint8_t> deinterleave(const std::vector<uint8_t> &bits, size_t rows,
     return out;
 }
 
+void fec_encoding(std::vector<uint8_t> &bits, std::vector<uint8_t> &output, FEC &config)
+{
+    output.clear();
+
+    size_t block_group = config.block_size * config.rows;
+    while (bits.size() % block_group != 0)
+        bits.push_back(0);
+
+    size_t num_data_blocks = bits.size() / config.block_size;
+    size_t num_fec_frames = num_data_blocks / config.rows;
+
+    for (size_t s = 0; s < num_fec_frames; ++s)
+    {
+        std::vector<uint8_t> interleave_matrix;
+
+        for (size_t r = 0; r < config.rows; ++r)
+        {
+            size_t i = s * config.rows + r;
+
+            auto start = bits.begin() + i * config.block_size;
+            auto end = start + config.block_size;
+
+            std::vector<uint8_t> block(start, end);
+
+            auto hamming_block = hamming_encode(block);
+            interleave_matrix.insert(interleave_matrix.end(), hamming_block.begin(), hamming_block.end());
+        }
+
+        auto interleaved = interleave(interleave_matrix, config.rows, config.cols);
+        output.insert(output.end(), interleaved.begin(), interleaved.end());
+    }
+};
+
+void fec_decoding(std::vector<uint8_t> &bits, std::vector<uint8_t> &output, FEC &config)
+{
+    output.clear();
+
+    size_t frame_size = config.super_bits;
+    size_t num_frames = bits.size() / frame_size;
+
+    for (size_t s = 0; s < num_frames; ++s)
+    {
+        auto start = bits.begin() + s * frame_size;
+        auto end = start + frame_size;
+
+        std::vector<uint8_t> frame(start, end);
+
+        auto deinterleaved = deinterleave(frame, config.rows, config.cols);
+
+        for (size_t r = 0; r < config.rows; ++r)
+        {
+            auto row_start = deinterleaved.begin() + r * config.cols;
+            auto row_end = row_start + config.cols;
+
+            std::vector<uint8_t> row(row_start, row_end);
+
+            auto decoded = hamming_decode(row);
+            output.insert(output.end(), decoded.begin(), decoded.end());
+        }
+    }
+}
+
+float get_ber(const std::vector<uint8_t> &tx, const std::vector<uint8_t> &rx)
+{
+    size_t min_size = std::min(tx.size(), rx.size());
+    size_t bit_errors = 0;
+    for (size_t i = 0; i < min_size; ++i)
+    {
+        if (tx[i] != rx[i])
+            bit_errors++;
+    }
+
+    double ber = (double)bit_errors / min_size;
+    return ber;
+}
+
 static std::pair<uint8_t, uint8_t> demap_component_3gpp(float val)
 {
     uint8_t b_sign = (val < 0.0f) ? 1 : 0;
@@ -161,8 +234,9 @@ static std::pair<uint8_t, uint8_t> demap_component_3gpp(float val)
 
 void qpsk_mapper_3gpp(const std::vector<uint8_t> &bits, std::vector<std::complex<float>> &symbols)
 {
-    symbols.resize(bits.size() / 2);
-    for (size_t i = 0; i < symbols.size(); ++i)
+    size_t symbols_count = bits.size() / 2;
+    symbols.resize(symbols_count);
+    for (size_t i = 0; i < symbols_count; ++i)
         symbols[i] = std::complex<float>(
                          bits[2 * i + 0] * -2.0 + 1.0,
                          bits[2 * i + 1] * -2.0 + 1.0) /
@@ -417,22 +491,24 @@ void MultipathChannel::set_paths(size_t beams_count_, float sample_rate, float c
     std::uniform_real_distribution<> dis(10.0f, 500.0f);
 
     this->beams_count = beams_count_;
+    this->sample_rate = sample_rate;
+    this->carrier = carrier;
     beams.resize(beams_count);
 
     float c = 3e8f;
     float Ts = 1.0f / sample_rate;
 
     for (int i = 0; i < beams_count; ++i)
-        beams[i].distance = dis(gen);
+        beams[i].base_distance = dis(gen);
 
     std::sort(beams.begin(), beams.begin() + beams_count, [](const beam &a, const beam &b)
-              { return a.distance < b.distance; });
+              { return a.base_distance < b.base_distance; });
 
     // Beams configure
     for (int i = 0; i < beams_count; ++i)
     {
-        beams[i].absolute_offset = static_cast<size_t>(std::round((beams[i].distance - beams[0].distance) / (c * Ts)));
-        beams[i].coefficient = c / (4 * M_PIf * beams[i].distance * carrier);
+        beams[i].absolute_offset = static_cast<size_t>(std::round((beams[i].distance - beams[0].base_distance) / (c * Ts)));
+        beams[i].coefficient = c / (4 * M_PIf * beams[i].base_distance * carrier);
     }
 };
 
@@ -476,9 +552,17 @@ void MultipathChannel::set_noise(float db)
 
 void MultipathChannel::update_paths(float coefficient)
 {
+    float c = 3e8f;
+    float Ts = 1.0f / sample_rate;
+
     for (int i = 0; i < beams_count; ++i)
-        beams[i].distance *= coefficient;
-};
+    {
+        float d = beams[i].base_distance * (1.0f + (coefficient - 1.0f) * (i + 1));
+        beams[i].absolute_offset = static_cast<size_t>(
+            std::round((d - beams[0].base_distance) / (c * Ts)));
+        beams[i].coefficient = c / (4 * M_PIf * d * carrier);
+    }
+}
 
 void generate_bits(std::vector<uint8_t> &bits, size_t L)
 {

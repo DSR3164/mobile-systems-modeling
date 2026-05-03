@@ -17,17 +17,25 @@
 
 void run_gui()
 {
-    std::vector<uint8_t> bits(2000);
-    std::vector<std::complex<float>> symbols(2000);
-    std::vector<std::complex<float>> buffer(2000);
-    std::vector<std::complex<float>> signal(2000);
-    std::vector<std::complex<float>> demoded(2000);
-    std::vector<std::complex<float>> equalized(2000);
-    std::vector<uint8_t> received_bits(2000);
-    std::vector<float> buffer_spectrum(2000);
-    std::vector<float> signal_spectrum(2000);
-    std::vector<float> buffer_freqs(2000);
-    std::vector<float> signal_freqs(2000);
+    std::vector<uint8_t> bits;
+    std::vector<uint8_t> encoded_bits;
+    std::vector<uint8_t> decoded_bits;
+    std::vector<uint8_t> bytes;
+    std::vector<uint8_t> temp;
+    std::vector<std::complex<float>> symbols;
+    std::vector<std::complex<float>> buffer;
+    std::vector<std::complex<float>> signal;
+    std::vector<std::complex<float>> demoded;
+    std::vector<std::complex<float>> equalized;
+    std::vector<uint8_t> received_bits;
+    std::vector<uint8_t> received_bytes;
+    std::vector<float> buffer_spectrum;
+    std::vector<float> signal_spectrum;
+    std::vector<float> buffer_freqs;
+    std::vector<float> signal_freqs;
+    std::vector<float> ber_history;
+    std::string text;
+    std::string received_text;
 
     int start = 0;
     int L = 1440;
@@ -36,19 +44,31 @@ void run_gui()
     bool update = true;
     bool always_random = false;
     float sample_rate = 1.92e6;
+    float temperature = 20.0f;
     bool random_paths = false;
+    bool update_paths = false;
+    bool data_changed = true;
+
+    auto get_noise = [](float sample_rate, float temp)
+    {
+        float k = 1.3806449e-23;
+        float T_k = temp + 273.15;
+        float NF = 36;
+
+        return 10 * std::log10(k * T_k * sample_rate) + NF;
+    };
 
     OFDMConfig base;
     MultipathChannel channel;
-    float noise_db = -174 + 10 * std::log10(sample_rate) + 6;
+    FEC config;
+    float noise_db = get_noise(sample_rate, temperature);
     channel.set_noise(noise_db);
     channel.set_paths();
     int N = base.n_subcarriers;
     int PS = base.pilots_spacing;
 
-    generate_bits(bits, 1440);
-    qpsk_mapper_3gpp(bits, symbols);
-    ofdm(symbols, buffer, base);
+    static std::mt19937 gen(std::random_device{}());
+    static std::normal_distribution<float> dis(1.0f, 0.03f);
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER);
     SDL_Window *window = SDL_CreateWindow(
@@ -86,14 +106,30 @@ void run_gui()
             update |= RT;
             if (update)
             {
+                text = "Test 1440 test!\nBroadcasting signal...\nCarrier frequency established.\nData packet received.   \n\n";
+                bytes.resize(text.size(), 0);
+                encoder(text.c_str(), bytes);
+                bits = to_bits(bytes);
+                fec_encoding(bits, encoded_bits, config);
                 if (always_random)
                 {
-                    generate_bits(bits, L);
-                    qpsk_mapper_3gpp(bits, symbols);
-                    ofdm(symbols, buffer, base);
+                    generate_bits(temp, L);
+                    bits.insert(bits.end(), temp.begin(), temp.end());
+                    data_changed = true;
                 }
+                if (data_changed)
+                {
+                    if (bits.size() % 2 != 0)
+                        encoded_bits.push_back(0);
+                    qpsk_mapper_3gpp(encoded_bits, symbols);
+                    ofdm(symbols, buffer, base);
+                    data_changed = false;
+                }
+
                 if (random_paths)
                     channel.set_paths(4, sample_rate);
+                if (update_paths)
+                    channel.update_paths(dis(gen));
 
                 channel.pass_through(buffer, signal);
                 demodulate_ofdm(signal, demoded, base, start);
@@ -101,35 +137,40 @@ void run_gui()
                 equalized.resize(symbols.size(), {0.0f, 0.0f});
                 qpsk_demapper_3gpp(equalized, received_bits);
 
+                fec_decoding(received_bits, decoded_bits, config);
+
+                received_bytes = from_bits(decoded_bits);
+                received_text.assign(reinterpret_cast<const char *>(received_bytes.data()), received_bytes.size());
+
+                auto ber = get_ber(bits, decoded_bits);
+                ber_history.push_back(ber);
+
                 compute_spectrum(buffer, buffer_spectrum, buffer_freqs, sample_rate);
                 compute_spectrum(signal, signal_spectrum, signal_freqs, sample_rate);
 
                 update = false;
+                bits.clear();
             }
 
             { // Controls
-                static std::mt19937 gen(std::random_device{}());
-                static std::uniform_real_distribution<float> dis(0.5f, 1.5f);
+
                 ImGui::Begin("Controls");
                 ImGui::Text("FPS: %.2f", io.Framerate);
                 ImGui::SliderInt("Packet start", &start, 0, 180);
-                if (ImGui::InputInt("Bits count", &L))
-                {
-                    if (L < 5)
-                        L = 66;
-                    generate_bits(bits, L);
-                    qpsk_mapper_3gpp(bits, symbols);
-                    ofdm(symbols, buffer, base);
-                }
+
                 if (ImGui::InputFloat("Sample rate", &sample_rate, 1e3f, 1e7f, "%.3e"))
                 {
-                    channel.set_paths(4, sample_rate);
-                    channel.update_paths(dis(gen));
-                };
-                if (ImGui::InputFloat("Noise dB", &noise_db))
-                {
+                    noise_db = get_noise(sample_rate, temperature);
                     channel.set_noise(noise_db);
-                };
+                    channel.set_paths(4, sample_rate);
+                }
+                if (ImGui::InputFloat("Env temperature", &temperature))
+                {
+                    noise_db = get_noise(sample_rate, temperature);
+                    channel.set_noise(noise_db);
+                }
+                if (ImGui::InputFloat("Noise dB", &noise_db))
+                    channel.set_noise(noise_db);
                 if (ImGui::Checkbox("Real-Time", &RT))
                     update = RT;
                 if (!RT)
@@ -139,20 +180,40 @@ void run_gui()
                         update = true;
                 }
                 ImGui::Checkbox("Random Data", &always_random);
-                ImGui::Checkbox("Random Pahts", &random_paths);
-                if (ImGui::SliderInt("Pilot Spacing", &PS, 2, N / 2))
+                if (always_random)
                 {
+                    ImGui::Text("Bits count");
+                    if (ImGui::InputInt("##Bits_count", &L))
+                    {
+                        if (L < 5)
+                            L = 66;
+                        generate_bits(bits, L);
+                        qpsk_mapper_3gpp(bits, symbols);
+                        ofdm(symbols, buffer, base);
+                    }
+                }
+                ImGui::Checkbox("Random Pahts", &random_paths);
+                ImGui::Checkbox("Update Pahts", &update_paths);
+                if (ImGui::SliderInt("Pilot Spacing", &PS, 2, N / 2))
                     if (PS > 2)
                         base.pilots_spacing = PS;
-                }
 
+                ImGui::TextWrapped("Text: %s", received_text.c_str());
                 ImGui::End();
             }
 
-            ImGui::Begin("Bits");
+            ImGui::Begin("Raw Bits");
             if (ImPlot::BeginPlot("Bits", ImGui::GetContentRegionAvail()))
             {
                 ImPlot::PlotStairs("Bits", bits.data(), bits.size());
+                ImPlot::EndPlot();
+            }
+            ImGui::End();
+
+            ImGui::Begin("Encoded Bits");
+            if (ImPlot::BeginPlot("Encoded Bits", ImGui::GetContentRegionAvail()))
+            {
+                ImPlot::PlotStairs("Encoded Bits", encoded_bits.data(), encoded_bits.size());
                 ImPlot::EndPlot();
             }
             ImGui::End();
@@ -254,6 +315,18 @@ void run_gui()
                 ImPlot::EndPlot();
             }
             ImGui::End();
+
+            ImGui::Begin("Ber");
+            if (ImPlot::BeginPlot("Ber", ImGui::GetContentRegionAvail()))
+            {
+                ImPlot::SetupAxesLimits(0, 1000, -0.2, 1.2, ImPlotCond_Once);
+                ImPlot::PlotLine("Ber", ber_history.data(), ber_history.size());
+                ImPlot::EndPlot();
+            }
+            ImGui::End();
+
+            if (ber_history.size() > 1000)
+                ber_history.erase(ber_history.begin());
         }
 
         ImGui::Render();

@@ -86,9 +86,22 @@ struct OFDMConfig
 
 struct beam
 {
+    float base_distance;
     float distance;
     float coefficient;
     size_t absolute_offset;
+    float mult;
+};
+
+struct FEC
+{
+    int block_size = 32;
+    int overhead = 6;
+    int bytes_size = block_size / 8;
+    int block_bits = block_size + overhead;
+    size_t rows = 5;
+    size_t cols = block_size + overhead;
+    size_t super_bits = rows * cols;
 };
 
 class MultipathChannel
@@ -104,6 +117,8 @@ private:
     std::vector<beam> beams;
     float noise_power;
     float sigma;
+    float sample_rate;
+    float carrier;
 };
 
 enum class Modulation
@@ -114,12 +129,16 @@ enum class Modulation
     QAM64,
 };
 
-void encoder(char *letters, std::vector<std::uint8_t> &bits);
-void decoder(std::vector<std::uint8_t> bits, char *letters);
+void encoder(const char *letters, std::vector<std::uint8_t> &bits);
+void decoder(const std::vector<std::uint8_t> &bits, char *letters);
 std::vector<uint8_t> hamming_encode(const std::vector<uint8_t> &data);
 std::vector<uint8_t> hamming_decode(const std::vector<uint8_t> &data);
 std::vector<uint8_t> interleave(const std::vector<uint8_t> &input, size_t rows, size_t cols);
 std::vector<uint8_t> deinterleave(const std::vector<uint8_t> &input, size_t rows, size_t cols);
+
+void fec_encoding(std::vector<uint8_t> &bits, std::vector<uint8_t> &output, FEC &config);
+void fec_decoding(std::vector<uint8_t> &bits, std::vector<uint8_t> &output, FEC &config);
+float get_ber(const std::vector<uint8_t> &tx, const std::vector<uint8_t> &rx);
 
 std::vector<uint8_t> to_bits(const std::vector<uint8_t> &data);
 std::vector<uint8_t> from_bits(const std::vector<uint8_t> &bits);
