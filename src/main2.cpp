@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <random>
 #include <cmath>
+#include <iostream>
 
 #include "backends/imgui_impl_opengl3.h"
 #include "backends/imgui_impl_sdl2.h"
@@ -34,6 +35,9 @@ void run_gui()
     std::vector<float> buffer_freqs;
     std::vector<float> signal_freqs;
     std::vector<float> ber_history;
+    std::vector<float> snr_history;
+    std::vector<float> ber_s;
+    std::vector<float> snr_s;
     std::string text;
     std::string received_text;
 
@@ -48,6 +52,9 @@ void run_gui()
     bool random_paths = false;
     bool update_paths = false;
     bool data_changed = true;
+    bool snr_test = false;
+    size_t test_counter = 0;
+    int foreach = 20;
 
     auto get_noise = [](float sample_rate, float temp)
     {
@@ -145,6 +152,63 @@ void run_gui()
                 auto ber = get_ber(bits, decoded_bits);
                 ber_history.push_back(ber);
 
+                if (snr_test)
+                {
+                    ber_history.clear();
+                    snr_history.clear();
+                    for (size_t n = 0; n < 50; ++n)
+                    {
+                        float snr_mean = 0.0f;
+                        float ber_mean = 0.0f;
+                        noise_db = -static_cast<float>(n) * 1.1 - 35;
+                        text = "Test 1440 test!\nBroadcasting signal...\nCarrier frequency established.\nData packet received.   \n\n";
+                        bytes.resize(text.size(), 0);
+                        encoder(text.c_str(), bytes);
+                        bits = to_bits(bytes);
+                        fec_encoding(bits, encoded_bits, config);
+                        for (size_t i = 0; i < 20; ++i)
+                        {
+                            channel.set_noise(noise_db);
+                            channel.pass_through(buffer, signal);
+                            demodulate_ofdm(signal, demoded, base, start);
+                            ofdm_equalize(demoded, equalized, base);
+                            equalized.resize(symbols.size(), {0.0f, 0.0f});
+                            qpsk_demapper_3gpp(equalized, received_bits);
+
+                            fec_decoding(received_bits, decoded_bits, config);
+
+                            received_bytes = from_bits(decoded_bits);
+                            received_text.assign(reinterpret_cast<const char *>(received_bytes.data()), received_bytes.size());
+
+                            float signal_power_db = 0.0f;
+                            float signal_power = 0.0f;
+                            for (size_t n = 0; n < signal.size(); ++n)
+                                signal_power += std::norm(signal[n]);
+
+                            signal_power_db = 10.0f * std::log10(signal_power / static_cast<float>(signal.size()));
+                            float snr = signal_power_db - noise_db;
+                            snr_history.push_back(snr);
+                            ber_history.push_back(get_ber(bits, decoded_bits));
+                        }
+                        for (size_t i = 0; i < snr_history.size(); ++i)
+                            snr_mean += snr_history[i];
+                        for (size_t i = 0; i < ber_history.size(); ++i)
+                            ber_mean += ber_history[i];
+
+                        snr_mean /= snr_history.size();
+                        ber_mean /= ber_history.size();
+                        if (snr_mean > 1e-12f && ber_mean > 1e-12f)
+                        {
+                            snr_s.push_back(snr_mean);
+                            ber_s.push_back(ber_mean);
+                        }
+                        ber_history.clear();
+                        snr_history.clear();
+                    }
+                    snr_test = false;
+                    noise_db = get_noise(sample_rate, temperature);
+                };
+
                 compute_spectrum(buffer, buffer_spectrum, buffer_freqs, sample_rate);
                 compute_spectrum(signal, signal_spectrum, signal_freqs, sample_rate);
 
@@ -192,8 +256,14 @@ void run_gui()
                         ofdm(symbols, buffer, base);
                     }
                 }
-                ImGui::Checkbox("Random Pahts", &random_paths);
-                ImGui::Checkbox("Update Pahts", &update_paths);
+                ImGui::Checkbox("Random Paths", &random_paths);
+                ImGui::Checkbox("Update Paths", &update_paths);
+                if (ImGui::Button("Perform test"))
+                {
+                    snr_s.clear();
+                    ber_s.clear();
+                    snr_test = true;
+                }
                 if (ImGui::SliderInt("Pilot Spacing", &PS, 2, N / 2))
                     if (PS > 2)
                         base.pilots_spacing = PS;
@@ -321,6 +391,19 @@ void run_gui()
             {
                 ImPlot::SetupAxesLimits(0, 1000, -0.2, 1.2, ImPlotCond_Once);
                 ImPlot::PlotLine("Ber", ber_history.data(), ber_history.size());
+                ImPlot::EndPlot();
+            }
+            ImGui::End();
+            ImGui::Begin("BER / SNR");
+            if (ImPlot::BeginPlot("BER vs SNR", ImGui::GetContentRegionAvail()))
+            {
+                ImPlot::SetupAxes("SNR (dB)", "BER");
+                ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
+                ImPlot::SetupAxesLimits(-5, 20, 1e-5, 1.0, ImPlotCond_Once);
+                ImPlot::SetupAxisFormat(ImAxis_Y1, "%.0e");
+                if (!snr_s.empty())
+                    ImPlot::PlotLine("BER / SNR", snr_s.data(), ber_s.data(), (int)ber_s.size());
+
                 ImPlot::EndPlot();
             }
             ImGui::End();
