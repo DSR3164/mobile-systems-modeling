@@ -86,6 +86,8 @@ void run_gui()
     ImGui::CreateContext();
     ImPlot::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
+
+    io.IniFilename = "../config/imgui.ini";
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Включить Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Включить Gamepad Controls
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;     // Включить Docking
