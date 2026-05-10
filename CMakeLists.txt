@@ -57,15 +57,12 @@ add_library(implot STATIC
 target_include_directories(implot PUBLIC ${THIRD_PARTY_DIR}/implot)
 target_link_libraries(implot PUBLIC imgui)
 
-add_executable(main
-    ${SRC_DIR}/main.cpp
-    ${SRC_DIR}/funcs.cpp
-)
+add_library(dsp STATIC ${SRC_DIR}/funcs.cpp)
+target_include_directories(dsp PUBLIC ${INCLUDE_DIR})
 
-add_executable(gui
-    ${SRC_DIR}/main2.cpp
-    ${SRC_DIR}/funcs.cpp
-)
+add_executable(main ${SRC_DIR}/main.cpp)
+
+add_executable(gui ${SRC_DIR}/main2.cpp)
 
 target_include_directories(main PRIVATE ${INCLUDE_DIR})
 
@@ -73,6 +70,7 @@ target_include_directories(gui PRIVATE ${INCLUDE_DIR} ${FFTW3F_INCLUDE_DIR})
 
 target_link_libraries(gui
     PRIVATE
+    dsp
     ${FFTW3F_LIB}
     imgui
     implot
@@ -83,6 +81,7 @@ target_link_libraries(gui
 
 target_link_libraries(main
     PRIVATE
+    dsp
     ${FFTW3F_LIB}
     imgui
     implot
