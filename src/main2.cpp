@@ -431,13 +431,6 @@ void run_gui()
 
 int main(int argc, char *argv[])
 {
-
-    std::thread gui_thread(run_gui);
-    gui_thread.join();
-
-    // Здесь должен работать поток с сервером
-    // std::thread zmq_thread(zmq_server_run);
-    // zmq_thread.join();
-
+    run_gui();
     return 0;
 }
