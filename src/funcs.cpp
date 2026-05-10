@@ -507,7 +507,7 @@ void MultipathChannel::set_paths(size_t beams_count_, float sample_rate, float c
     // Beams configure
     for (int i = 0; i < beams_count; ++i)
     {
-        beams[i].absolute_offset = static_cast<size_t>(std::round((beams[i].distance - beams[0].base_distance) / (c * Ts)));
+        beams[i].absolute_offset = static_cast<size_t>(std::round((beams[i].base_distance - beams[0].base_distance) / (c * Ts)));
         beams[i].coefficient = c / (4 * M_PIf * beams[i].base_distance * carrier);
     }
 };
